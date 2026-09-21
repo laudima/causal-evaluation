@@ -1,0 +1,6 @@
+models:
+  - name: dry-run
+    provider: dry-run
+    model: configurable-model
+    timeout_seconds: 30
+    max_retries: 2

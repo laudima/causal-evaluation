@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>causal-evaluation - question viewer</title>
+<script src="https://unpkg.com/vis-network@9.1.6/standalone/umd/vis-network.min.js"
+        integrity="sha384-Ux6phic9PEHJ38YtrijhkzyJ8yQlH8i/+buBR8s3mAZOJrP1gwyvAcIYl3GWtpX1"
+        crossorigin="anonymous"></script>
+<style>
+__CSS__
+</style>
+</head>
+<body>
+<div id="graph-wrap">
+  <div id="graph"></div>
+  <div id="notice"></div>
+</div>
+<div id="sidebar">
+  <div id="header">
+    <h1>Question Viewer</h1>
+    <input id="picker" list="qids" placeholder="Search question_id / story / topology..." />
+    <datalist id="qids"></datalist>
+  </div>
+  <div class="panel">
+    <h3>Question</h3>
+    <div id="q-body"><div class="empty">Pick a question_id above</div></div>
+  </div>
+  <div class="panel">
+    <h3>Benchmark</h3>
+    <div id="q-meta"></div>
+  </div>
+  <div class="panel">
+    <h3>Model Output</h3>
+    <div id="q-model"></div>
+  </div>
+  <div class="panel">
+    <h3>Legend</h3>
+    <div class="legend-item"><div class="legend-dot" style="background:#4E79A7"></div> Treatment</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#59A14F"></div> Outcome</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#F28E2B"></div> Other variable</div>
+  </div>
+  <div class="panel" style="flex:1; border-bottom:none;">
+    <h3>Selected Node</h3>
+    <div id="info-content"><div class="empty">Click a node to see details</div></div>
+  </div>
+</div>
+
+<script>
+__JS__
+</script>
+</body>
+</html>

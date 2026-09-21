@@ -1,0 +1,11 @@
+experiment:
+  name: cladder-baseline
+  seed: 20260903
+  input_path: data/raw/cladder-v1-q-easy.json
+  sample_path: data/interim/sample.jsonl
+  responses_path: data/interim/responses.jsonl
+  evaluations_path: data/processed/evaluations.jsonl
+  sample_size: 10
+  model: gpt-4o-mini
+  provider: openai
+  prompt: causal_cot

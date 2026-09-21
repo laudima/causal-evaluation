@@ -1,0 +1,11 @@
+experiment:
+  name: cladder-smollm2-local
+  seed: 20260903
+  input_path: data/raw/cladder-v1-q-easy.json
+  sample_path: data/interim/sample.jsonl
+  responses_path: data/interim/responses-smollm2.jsonl
+  evaluations_path: data/processed/evaluations-smollm2.jsonl
+  sample_size: 10
+  model: docker.io/ai/smollm2:latest
+  provider: docker
+  prompt: causal_cot
