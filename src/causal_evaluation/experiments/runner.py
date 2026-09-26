@@ -7,7 +7,7 @@ from ..data.validation import BenchmarkQuestion
 from ..models.base import LLMClient
 from .prompts import render_causal_cot_step1, render_causal_cot_step2, render_prompt
 from .schema import ResponseRecord
-from .storage import append_unique
+from .storage import append_unique, load_existing_keys
 
 
 def run_experiment(
@@ -20,10 +20,16 @@ def run_experiment(
     run_id: str,
 ) -> int:
     """Query each question once and persist raw responses as JSONL."""
+    existing_ids = load_existing_keys(output_path, "request_id")
     written = 0
     for question in questions:
         question_id = question.stable_id()
         request_id = str(uuid5(NAMESPACE_URL, f"{run_id}:{model}:{question_id}"))
+        if request_id in existing_ids:
+            # Already answered in a prior/interrupted run - skip without
+            # re-querying the model, so resuming a large run stays cheap
+            # instead of re-running every previously-completed question.
+            continue
         prompt = render_prompt(
             template, question.question, question.answer if model == "dry-run" else None
         )
@@ -39,7 +45,9 @@ def run_experiment(
             response=response,
             created_at=datetime.now(UTC),
         )
-        written += append_unique(output_path, record.model_dump(mode="json"), "request_id")
+        written += append_unique(
+            output_path, record.model_dump(mode="json"), "request_id", existing=existing_ids
+        )
     return written
 
 
@@ -54,10 +62,15 @@ def run_causal_cot_experiment(
     run_id: str,
 ) -> int:
     """Query each question with the two-turn CausalCoT prompt, persisting the final answer."""
+    existing_ids = load_existing_keys(output_path, "request_id")
     written = 0
     for question in questions:
         question_id = question.stable_id()
         request_id = str(uuid5(NAMESPACE_URL, f"{run_id}:{model}:{question_id}"))
+        if request_id in existing_ids:
+            # See run_experiment: skip already-answered questions before
+            # spending two model calls re-deriving an answer we'll discard.
+            continue
         step1_prompt = render_causal_cot_step1(
             step1_template, question.given_info, question.question
         )
@@ -79,5 +92,7 @@ def run_causal_cot_experiment(
             response=final,
             created_at=datetime.now(UTC),
         )
-        written += append_unique(output_path, record.model_dump(mode="json"), "request_id")
+        written += append_unique(
+            output_path, record.model_dump(mode="json"), "request_id", existing=existing_ids
+        )
     return written

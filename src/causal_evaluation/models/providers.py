@@ -6,6 +6,11 @@ from openai import OpenAI
 
 from .base import ModelResponse
 
+# A request that never times out can hang a `run` indefinitely - e.g. a stale
+# TCP connection left over from a Docker Model Runner restart. Every
+# OpenAI-compatible client gets this ceiling unless overridden.
+DEFAULT_TIMEOUT_SECONDS = float(os.environ.get("LLM_TIMEOUT_SECONDS", "60"))
+
 
 class DryRunClient:
     """Provider that returns the benchmark answer embedded in test metadata."""
@@ -27,10 +32,13 @@ class OpenAICompatibleClient:
         provider_name: str,
         base_url: str | None = None,
         api_key: str | None = None,
+        timeout: float = DEFAULT_TIMEOUT_SECONDS,
     ):
         self._model = model
         self._provider_name = provider_name
-        self._client = OpenAI(api_key=api_key or os.environ["LLM_API_KEY"], base_url=base_url)
+        self._client = OpenAI(
+            api_key=api_key or os.environ["LLM_API_KEY"], base_url=base_url, timeout=timeout
+        )
 
     def complete(self, prompt: str) -> ModelResponse:
         try:
@@ -64,10 +72,14 @@ def build_client(provider: str, model: str = ""):
     if provider == "docker":
         # Docker Model Runner serves local models over an OpenAI-compatible API
         # and ignores the API key, so no credential is read from the environment.
+        # 127.0.0.1 (not "localhost") avoids httpx blocking on a dead IPv6
+        # (::1) connection attempt before falling back to IPv4 - observed
+        # adding ~60s of dead time per request that curl's resolver doesn't
+        # hit against the same host.
         return OpenAICompatibleClient(
             model=model,
             provider_name="docker",
-            base_url=os.environ.get("DOCKER_MODEL_BASE_URL", "http://localhost:12434/engines/v1"),
+            base_url=os.environ.get("DOCKER_MODEL_BASE_URL", "http://127.0.0.1:12434/engines/v1"),
             api_key="docker-model-runner",
         )
     raise ValueError(f"Unsupported provider: {provider}")

@@ -16,6 +16,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "ruff>=0.6"]
+analysis = ["matplotlib>=3.8", "networkx>=3.2", "ipykernel>=6.29", "nbconvert>=7.16"]
+colab = ["torch>=2.2", "transformers>=4.45", "accelerate>=0.33", "bitsandbytes>=0.43", "tqdm>=4.66"]
 
 [project.scripts]
 causal-evaluation = "causal_evaluation.cli:main"

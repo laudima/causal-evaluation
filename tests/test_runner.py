@@ -88,9 +88,10 @@ def test_run_experiment_is_resumable_by_request_id(tmp_path):
         str(output_path),
         "run-1",
     )
+    second_client = FakeClient()
     second_written = run_experiment(
         questions,
-        FakeClient(),
+        second_client,
         "{question}",
         "test-model",
         "test-provider",
@@ -100,3 +101,43 @@ def test_run_experiment_is_resumable_by_request_id(tmp_path):
 
     assert second_written == 0
     assert len(_read_records(output_path)) == 1
+    # Resuming must skip already-answered questions before ever calling the
+    # model, not just dedup at write time - a large resumed run must not
+    # re-query every previously-completed question.
+    assert second_client.prompts == []
+
+
+def test_run_causal_cot_experiment_skips_answered_questions_without_calling_client(tmp_path):
+    questions = [
+        BenchmarkQuestion(question="Q1?", answer="yes", question_id="q1", given_info="Info."),
+        BenchmarkQuestion(question="Q2?", answer="yes", question_id="q2", given_info="Info."),
+    ]
+    output_path = tmp_path / "responses.jsonl"
+
+    run_causal_cot_experiment(
+        [questions[0]],
+        FakeClient(),
+        "{given_info} {question}",
+        "{given_info} {question} {reasoning}",
+        "test-model",
+        "test-provider",
+        str(output_path),
+        "run-1",
+    )
+    second_client = FakeClient()
+    second_written = run_causal_cot_experiment(
+        questions,
+        second_client,
+        "{given_info} {question}",
+        "{given_info} {question} {reasoning}",
+        "test-model",
+        "test-provider",
+        str(output_path),
+        "run-1",
+    )
+
+    assert second_written == 1
+    assert len(_read_records(output_path)) == 2
+    # Only q2's two calls (reasoning + final) should happen - q1 must be
+    # skipped entirely, not silently re-queried and discarded at write time.
+    assert len(second_client.prompts) == 2
