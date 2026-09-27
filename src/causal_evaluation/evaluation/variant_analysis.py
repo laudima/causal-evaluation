@@ -10,13 +10,23 @@ from .stats import bootstrap_mean_ci, diff_proportions_ci, mcnemar_exact, wilson
 
 
 def load_scored(sample_path: str | Path, result_paths: Iterable[str | Path]) -> pd.DataFrame:
-    """Join sampled items with model scores; a prediction is "yes" when P(Yes) > 0.5."""
+    """Join sampled items with model scores; a prediction is "yes" when P(Yes) > 0.5.
+
+    Results from a non-direct prompt strategy are labelled "<model>-<strategy>",
+    so every per-model table keeps the strategies apart.
+    """
     items = pd.read_json(sample_path, lines=True)
     frames = [pd.read_json(path, lines=True) for path in result_paths]
     if not frames:
         raise FileNotFoundError("No result files given")
-    results = pd.concat(frames, ignore_index=True).drop_duplicates(
-        ["item_id", "model"], keep="last"
+    results = pd.concat(frames, ignore_index=True)
+    if "prompt_strategy" not in results:
+        results["prompt_strategy"] = "direct"
+    results["prompt_strategy"] = results["prompt_strategy"].fillna("direct")
+    results = results.drop_duplicates(["item_id", "model", "prompt_strategy"], keep="last")
+    other = results["prompt_strategy"] != "direct"
+    results.loc[other, "model"] = (
+        results.loc[other, "model"] + "-" + results.loc[other, "prompt_strategy"]
     )
     df = results.merge(items, on="item_id", how="inner", validate="many_to_one")
     df["pred"] = (df["p_yes"] > 0.5).map({True: "yes", False: "no"})

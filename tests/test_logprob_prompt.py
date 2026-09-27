@@ -1,12 +1,21 @@
+import json
+
 import pytest
 
+from causal_evaluation.evaluation.variant_analysis import load_scored
 from causal_evaluation.models.logprob import (
+    COT_FINAL_QUESTION,
     NO_VARIANTS,
     YES_VARIANTS,
     answer_token_ids,
+    cot_messages,
+    done_item_ids,
     item_text,
+    render_messages,
     render_prompt,
 )
+
+ITEM = {"background": "X causes Y.", "given_info": "P=0.4.", "question": "Does X?"}
 
 
 class FakeTokenizer:
@@ -33,3 +42,43 @@ def test_answer_token_ids_keeps_single_token_forms():
     assert answer_token_ids(tok, NO_VARIANTS) == [4, 5]
     with pytest.raises(ValueError):
         answer_token_ids(tok, ("maybe",))
+
+
+def test_cot_messages_two_turns():
+    first = cot_messages(ITEM)
+    assert len(first) == 1
+    assert first[0]["content"].startswith("X causes Y.\nP=0.4.\nDoes X?\n\nGuidance:")
+    assert "Step 6) Calculate the estimand" in first[0]["content"]
+    full = cot_messages(ITEM, "reasoning text")
+    assert [m["role"] for m in full] == ["user", "assistant", "user"]
+    assert full[1]["content"] == "reasoning text"
+    assert full[2]["content"] == COT_FINAL_QUESTION
+
+
+def test_render_messages_fallback():
+    prompt, add_special = render_messages(FakeTokenizer(), cot_messages(ITEM, "r"))
+    assert prompt.startswith("User: X causes Y.") and prompt.endswith("Assistant:")
+    assert add_special
+
+
+def _write(path, rows):
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows))
+
+
+def test_done_ids_and_labels_separate_strategies(tmp_path):
+    results = tmp_path / "r.jsonl"
+    _write(
+        results,
+        [
+            {"item_id": "a", "model": "m", "p_yes": 0.9},
+            {"item_id": "a", "model": "m", "prompt_strategy": "causal_cot", "p_yes": 0.2},
+        ],
+    )
+    assert done_item_ids(results, "m") == {"a"}
+    assert done_item_ids(results, "m", "causal_cot") == {"a"}
+    assert done_item_ids(results, "m", "other") == set()
+    sample = tmp_path / "s.jsonl"
+    _write(sample, [{"item_id": "a", "answer": "yes"}])
+    df = load_scored(sample, [results]).set_index("model")
+    assert df.loc["m", "correct"]
+    assert not df.loc["m-causal_cot", "correct"]
