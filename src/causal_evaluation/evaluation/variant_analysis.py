@@ -51,6 +51,8 @@ def paired_accuracy_gap(df: pd.DataFrame) -> pd.DataFrame:
         wide = group.pivot_table(
             index="pair_id", columns="variant", values="correct", aggfunc="first"
         )
+        if not {"commonsense", "anticommonsense"} <= set(wide.columns):
+            continue
         wide = wide.dropna(subset=["commonsense", "anticommonsense"]).astype(bool)
         common, anti = wide["commonsense"], wide["anticommonsense"]
         mean, lo, hi = bootstrap_mean_ci(common.astype(int) - anti.astype(int))
@@ -108,6 +110,8 @@ def p_yes_shift(df: pd.DataFrame) -> pd.DataFrame:
         wide = group.pivot_table(
             index="pair_id", columns="variant", values="p_yes", aggfunc="first"
         )
+        if not {"commonsense", "anticommonsense"} <= set(wide.columns):
+            continue
         wide = wide.dropna(subset=["commonsense", "anticommonsense"])
         if wide.empty:
             continue

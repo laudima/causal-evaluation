@@ -242,19 +242,40 @@ def load_model(model_name: str, load_in_4bit: bool = False, dtype: str = "float3
     return model, tokenizer
 
 
-def done_item_ids(path: str | Path, model_name: str, prompt_strategy: str = "direct") -> set[str]:
-    """Item ids already scored for this model and prompt strategy (for resuming)."""
+def done_item_ids(
+    path: str | Path,
+    model_name: str,
+    prompt_strategy: str = "direct",
+    max_new_tokens: int | None = None,
+) -> set[str]:
+    """Item ids already scored for this model and prompt strategy (for resuming).
+
+    For CausalCoT, a truncated trace counts as done only if it was generated
+    with at least `max_new_tokens`; raising the limit therefore redoes just the
+    truncated items. Greedy decoding makes the finished ones identical anyway.
+    """
     target = Path(path)
     if not target.exists():
         return set()
+    done = set()
     with target.open(encoding="utf-8") as handle:
-        rows = (json.loads(line) for line in handle if line.strip())
-        return {
-            row["item_id"]
-            for row in rows
-            if row["model"] == model_name
-            and row.get("prompt_strategy", "direct") == prompt_strategy
-        }
+        for line in handle:
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            if (
+                row["model"] != model_name
+                or row.get("prompt_strategy", "direct") != prompt_strategy
+            ):
+                continue
+            redo = (
+                max_new_tokens is not None
+                and row.get("reasoning_truncated")
+                and (row.get("max_new_tokens") or 0) < max_new_tokens
+            )
+            if not redo:
+                done.add(row["item_id"])
+    return done
 
 
 def run_model(
@@ -273,7 +294,8 @@ def run_model(
 
     if prompt_strategy not in PROMPT_STRATEGIES:
         raise ValueError(f"prompt_strategy must be one of {PROMPT_STRATEGIES}")
-    done = done_item_ids(out_path, model_name, prompt_strategy)
+    limit = max_new_tokens if prompt_strategy == "causal_cot" else None
+    done = done_item_ids(out_path, model_name, prompt_strategy, limit)
     pending = [item for item in items if item["item_id"] not in done]
     if not pending:
         return 0

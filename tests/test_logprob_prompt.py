@@ -82,3 +82,41 @@ def test_done_ids_and_labels_separate_strategies(tmp_path):
     df = load_scored(sample, [results]).set_index("model")
     assert df.loc["m", "correct"]
     assert not df.loc["m-causal_cot", "correct"]
+
+
+def test_higher_token_limit_redoes_only_truncated(tmp_path):
+    results = tmp_path / "cot.jsonl"
+    base = {"model": "m", "prompt_strategy": "causal_cot", "max_new_tokens": 512}
+    _write(
+        results,
+        [
+            {**base, "item_id": "finished", "reasoning_truncated": False},
+            {**base, "item_id": "cut", "reasoning_truncated": True},
+        ],
+    )
+    assert done_item_ids(results, "m", "causal_cot", 512) == {"finished", "cut"}
+    assert done_item_ids(results, "m", "causal_cot", 1024) == {"finished"}
+    with results.open("a") as handle:
+        handle.write(
+            json.dumps(
+                {**base, "item_id": "cut", "max_new_tokens": 1024, "reasoning_truncated": True}
+            )
+            + "\n"
+        )
+    assert done_item_ids(results, "m", "causal_cot", 1024) == {"finished", "cut"}
+
+
+def test_load_scored_keeps_latest_row_per_item(tmp_path):
+    results = tmp_path / "cot.jsonl"
+    base = {"item_id": "a", "model": "m", "prompt_strategy": "causal_cot"}
+    _write(
+        results,
+        [
+            {**base, "p_yes": 0.1, "max_new_tokens": 512},
+            {**base, "p_yes": 0.9, "max_new_tokens": 1024},
+        ],
+    )
+    sample = tmp_path / "s.jsonl"
+    _write(sample, [{"item_id": "a", "answer": "yes"}])
+    df = load_scored(sample, [results])
+    assert len(df) == 1 and df["max_new_tokens"].iloc[0] == 1024 and df["correct"].iloc[0]
