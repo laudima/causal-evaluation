@@ -11,6 +11,7 @@ from causal_evaluation.models.logprob import (
     cot_messages,
     done_item_ids,
     item_text,
+    question_only_text,
     render_messages,
     render_prompt,
 )
@@ -120,3 +121,7 @@ def test_load_scored_keeps_latest_row_per_item(tmp_path):
     _write(sample, [{"item_id": "a", "answer": "yes"}])
     df = load_scored(sample, [results])
     assert len(df) == 1 and df["max_new_tokens"].iloc[0] == 1024 and df["correct"].iloc[0]
+
+
+def test_question_only_text_drops_graph_and_data():
+    assert question_only_text(ITEM).splitlines() == ["Does X?", "Answer with Yes or No only."]

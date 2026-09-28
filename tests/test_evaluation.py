@@ -81,3 +81,45 @@ def test_load_evaluations_concatenates_multiple_files(tmp_path):
     combined = load_evaluations([first, second])
 
     assert sorted(combined["model"]) == ["model-a", "model-b"]
+
+
+def test_prior_analysis_recovers_prior_and_answer_effects():
+    import numpy as np
+    import pandas as pd
+
+    from causal_evaluation.evaluation.prior_analysis import (
+        interpret,
+        join_prior,
+        paired_gaps,
+        prior_vs_structure,
+    )
+
+    rng = np.random.default_rng(0)
+    rows_ctx, rows_pri = [], []
+    for k in range(300):
+        answer = "yes" if k % 2 else "no"
+        for variant, shift in (("commonsense", 1.0), ("anticommonsense", -1.0)):
+            item = f"{variant}-{k}"
+            prior_logit = shift + rng.normal(0, 1)
+            ctx_logit = 0.5 * prior_logit + 2.0 * (answer == "yes") - 1.0 + rng.normal(0, 0.3)
+            base = {
+                "item_id": item,
+                "pair_id": f"pair-{k}",
+                "variant": variant,
+                "query_type": "ate",
+                "rung": 2,
+                "answer": answer,
+            }
+            rows_ctx.append({**base, "model": "m", "p_yes": 1 / (1 + np.exp(-ctx_logit))})
+            rows_pri.append(
+                {**base, "model": "m-question_only", "p_yes": 1 / (1 + np.exp(-prior_logit))}
+            )
+    joined = join_prior(pd.DataFrame(rows_ctx), pd.DataFrame(rows_pri))
+    assert len(joined) == 600
+    fit = prior_vs_structure(joined, n_boot=200).iloc[0]
+    assert abs(fit.b_prior - 0.5) < 0.05 and abs(fit.b_answer - 2.0) < 0.1
+    assert fit.b_prior_lo < 0.5 < fit.b_prior_hi
+    assert abs(fit.within_pair_slope - 0.5) < 0.05
+    gaps = paired_gaps(joined)
+    assert gaps.iloc[0].prior_gap > 0.2
+    assert "survives" in interpret(gaps).iloc[0].reading

@@ -7,6 +7,9 @@ and parsed. Two prompt strategies:
 - ``causal_cot``: the model first writes the six CausalCoT steps of Jin et al.
   (2023); its reasoning is kept in the conversation and a second turn asks for
   just Yes or No, whose probability is read from the first answer token.
+- ``question_only``: the question and the instruction, without the background
+  (graph) or the given data. It measures the model's prior for the question as
+  worded, i.e. what the variable names alone suggest.
 
 torch and transformers are imported lazily so the rest of the package does not
 depend on them.
@@ -62,12 +65,17 @@ COT_GUIDANCE = "\n\n".join(
 COT_FINAL_QUESTION = (
     "Based on all the reasoning above, answer the initial question with just Yes or No."
 )
-PROMPT_STRATEGIES = ("direct", "causal_cot")
+PROMPT_STRATEGIES = ("direct", "causal_cot", "question_only")
 
 
 def item_text(item: dict) -> str:
     """User message: background (states the graph), given data, question, instruction."""
     return f"{item['background']}\n{item['given_info']}\n{item['question']}\n{INSTRUCTION}"
+
+
+def question_only_text(item: dict) -> str:
+    """User message without the graph or the data: the question and the instruction only."""
+    return f"{item['question']}\n{INSTRUCTION}"
 
 
 def render_prompt(tokenizer, text: str) -> tuple[str, bool]:
@@ -148,9 +156,11 @@ def score_prompts(model, tokenizer, prompts: list[str], add_special: bool, yes_i
     ]
 
 
-def score_batch(model, tokenizer, items: list[dict], yes_ids: list[int], no_ids: list[int]):
-    """Direct prompt: score each item from a single user turn."""
-    rendered = [render_prompt(tokenizer, item_text(item)) for item in items]
+def score_batch(
+    model, tokenizer, items: list[dict], yes_ids: list[int], no_ids: list[int], text_fn=item_text
+):
+    """Single-turn prompt (direct by default): score each item from one user turn."""
+    rendered = [render_prompt(tokenizer, text_fn(item)) for item in items]
     return score_prompts(
         model, tokenizer, [p for p, _ in rendered], rendered[0][1], yes_ids, no_ids
     )
@@ -315,6 +325,10 @@ def run_model(
             batch = pending[start : start + batch_size]
             if prompt_strategy == "direct":
                 batch_scores = score_batch(model, tokenizer, batch, yes_ids, no_ids)
+            elif prompt_strategy == "question_only":
+                batch_scores = score_batch(
+                    model, tokenizer, batch, yes_ids, no_ids, text_fn=question_only_text
+                )
             else:
                 batch_scores = score_cot_batch(
                     model, tokenizer, batch, yes_ids, no_ids, max_new_tokens
